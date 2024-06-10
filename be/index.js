@@ -10,6 +10,7 @@ var cors = require("cors");
 const app = express();
 const httpServer = createServer(app);
 const DB_FILE_PATH = "./storage/db.json";
+const CHAT_DB_FILE_PATH = "./storage/chat.json";
 
 dotenv.config();
 app.use(express.json());
@@ -74,25 +75,45 @@ app.post("/posts", function (req, res) {
   res.json({ data: [writtenContent], isCreatedNew: true });
 });
 
+// Get init chat messages
+app.get("/chat-messages", function (req, res) {
+  const data = fs.readFileSync(CHAT_DB_FILE_PATH, "utf-8");
+  const currentDataArray = data && data.length > 0 ? JSON.parse(data) : [];
+
+  res.json({ data: currentDataArray });
+});
+
 // Set up wss
 const wss = new WebSocketServer({ server: httpServer }); // (2)
 wss.on("connection", (client) => {
   console.log("Client connected !");
+
+  // On msg
   client.on("message", (msg) => {
     broadcast(msg);
   });
 });
 
 function broadcast(msg) {
+  // Save chat history
+  const data = fs.readFileSync(CHAT_DB_FILE_PATH, "utf-8");
+  const currentDataArray = data && data.length > 0 ? JSON.parse(data) : [];
+
+  // Get msg
   const parsedMessage = JSON.parse(msg);
+  const saveData = {
+    message: parsedMessage.message,
+    timestamp: new Date().toLocaleString(),
+  };
+
+  fs.writeFileSync(
+    CHAT_DB_FILE_PATH,
+    JSON.stringify([...currentDataArray, saveData])
+  );
+
   for (const client of wss.clients) {
     if (client.readyState === ws.OPEN) {
-      client.send(
-        JSON.stringify({
-          message: parsedMessage.message,
-          timestamp: new Date().toLocaleString(),
-        })
-      );
+      client.send(JSON.stringify(saveData));
     }
   }
 }
